@@ -443,31 +443,3 @@ int wdg_pet(uint8_t task_id);
 int wdg_check_all(void);
 void wdg_force_reset(const char *reason);
 ```
-
----
-
-## File Structure
-
-```
-traffic_management_firmware/
-├── traffic_management_block_diagram.png    # System architecture diagram
-├── traffic_management_system.c             # Single-file version
-└── firmware/
-    ├── include/
-    │   ├── traffic_system.h               # Core definitions
-    │   ├── hal.h                          # Hardware abstraction
-    │   ├── protocol.h                     # Communication protocol
-    │   ├── scheduler.h                    # Task scheduler
-    │   └── watchdog.h                     # Safety monitor
-    ├── src/
-    │   ├── main.c                         # Entry point & tasks
-    │   ├── utils.c                        # Globals & utilities
-    │   ├── hal_sim.c                      # POSIX HAL simulation
-    │   ├── scheduler.c                    # Scheduler implementation
-    │   ├── protocol.c                     # Protocol implementation
-    │   └── watchdog.c                     # Watchdog implementation
-    └── build/
-        └── traffic_firmware               # Compiled executable
-```
-
----
