@@ -1,6 +1,6 @@
 # Traffic Management System
 
-## Embedded Firmware v2.0
+## Embedded Firmware v1.0
 
 **Date:** 2026-06-13  
 **Target:** ARM Cortex-M4 / POSIX / FreeRTOS  
