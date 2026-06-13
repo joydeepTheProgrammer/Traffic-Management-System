@@ -74,6 +74,12 @@ A real-time adaptive traffic management system for 4-way intersections with mult
 |  Main AC  |  UPS Battery  |  Solar + Charge Controller  |  PMU    |
 +------------------------------------------------------------------+
 ```
+### Block Diagram
+---
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/9ced0d9c-b132-4a08-b42c-8fe341b95c3c" />
+
+---
+
 
 ### State Machine
 
