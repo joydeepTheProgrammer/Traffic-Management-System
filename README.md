@@ -465,12 +465,3 @@ traffic_management_firmware/
 ```
 
 ---
-
-## License
-
-MIT License - Free for commercial and educational use.
-
-## Authors
-
-Embedded Systems Development Team  
-Version 2.0 | 2026-06-13
