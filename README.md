@@ -49,30 +49,30 @@ A real-time adaptive traffic management system for 4-way intersections with mult
 
 ```
 +------------------------------------------------------------------+
-|                        SENSOR LAYER                               |
+|                        SENSOR LAYER                              |
 |  IR  |  Ultrasonic  |  Inductive  |  Camera  |  V2X  |  Weather  |
 +------------------------------------------------------------------+
-|                    DATA ACQUISITION UNIT (DAQ)                    |
-|                    Sensor Fusion & Filtering                       |
+|                    DATA ACQUISITION UNIT (DAQ)                   |
+|                    Sensor Fusion & Filtering                     |
 +------------------------------------------------------------------+
-|                     COMMUNICATION LAYER                           |
-|  ZigBee/LoRa  |  Ethernet/Fiber  |  4G/5G  |  V2X (DSRC/C-V2X)  |
+|                     COMMUNICATION LAYER                          |
+|  ZigBee/LoRa  |  Ethernet/Fiber  |  4G/5G  |  V2X (DSRC/C-V2X)   |
 +------------------------------------------------------------------+
-|                  CENTRAL INTELLIGENCE CONTROLLER                  |
-|  +----------------+ +----------------+ +----------------+         |
-|  | Traffic Flow   | | Adaptive Timing| | Priority Queue |         |
-|  | Analyzer       | | Algorithm      | | Manager        |         |
-|  +----------------+ +----------------+ +----------------+         |
-|  +----------------+ +----------------+ +----------------+         |
-|  | Congestion     | | Real-time OS   | | Database       |         |
-|  | Predictor      | | (FreeRTOS)     | | (SQLite)       |         |
-|  +----------------+ +----------------+ +----------------+         |
+|                  CENTRAL INTELLIGENCE CONTROLLER                 |
+|  +----------------+ +----------------+ +----------------+        |
+|  | Traffic Flow   | | Adaptive Timing| | Priority Queue |        |
+|  | Analyzer       | | Algorithm      | | Manager        |        |
+|  +----------------+ +----------------+ +----------------+        |
+|  +----------------+ +----------------+ +----------------+        |
+|  | Congestion     | | Real-time OS   | | Database       |        |
+|  | Predictor      | | (FreeRTOS)     | | (SQLite)       |        |
+|  +----------------+ +----------------+ +----------------+        |
 +------------------------------------------------------------------+
 |                        ACTUATOR LAYER                            |
-|  Traffic LEDs  |  VMS Signs  |  Dynamic Lane  |  Pedestrian       |
+|  Traffic LEDs  |  VMS Signs  |  Dynamic Lane  |  Pedestrian      |
 +------------------------------------------------------------------+
-|                        POWER SYSTEM                                |
-|  Main AC  |  UPS Battery  |  Solar + Charge Controller  |  PMU    |
+|                        POWER SYSTEM                              |
+|  Main AC  |  UPS Battery  |  Solar + Charge Controller  |  PMU   |
 +------------------------------------------------------------------+
 ```
 ### Block Diagram
