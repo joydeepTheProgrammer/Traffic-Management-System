@@ -167,7 +167,7 @@ uint32_t hal_get_unique_id(void);
 ```
 +--------+--------+--------+--------+--------+-----+--------+--------+--------+--------+
 | 0x55   | 0xAA   | LEN_HI | LEN_LO | CMD    | ... | CRC31  | CRC23  | CRC15  | CRC07  |
-| SYNC1  | SYNC2  | Payload Length (2 bytes)    | Payload (N bytes)    | CRC32 (4 bytes)    |
+| SYNC1  | SYNC2  | Payload Length (2 bytes) | Payload (N bytes)     | CRC32 (4 bytes) |
 +--------+--------+--------+--------+--------+-----+--------+--------+--------+--------+
 ```
 
