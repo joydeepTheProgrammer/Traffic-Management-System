@@ -23,31 +23,31 @@ static bool gpio_states[4][16] = {{false}};
 int hal_gpio_init(uint32_t pin, uint8_t mode, uint8_t speed) {
     (void)mode;
     (void)speed;
-    uint8_t port = (pin >> 16) & 0xFF;
-    uint8_t pin_num = pin & 0xFFFF;
+    uint8_t port = GPIO_PORT_OF(pin);
+    uint8_t pin_num = GPIO_NUMBER_OF(pin);
     if (port >= 4 || pin_num >= 16) return -1;
     gpio_states[port][pin_num] = false;
     return 0;
 }
 
 int hal_gpio_write(uint32_t pin, bool value) {
-    uint8_t port = (pin >> 16) & 0xFF;
-    uint8_t pin_num = pin & 0xFFFF;
+    uint8_t port = GPIO_PORT_OF(pin);
+    uint8_t pin_num = GPIO_NUMBER_OF(pin);
     if (port >= 4 || pin_num >= 16) return -1;
     gpio_states[port][pin_num] = value;
     return 0;
 }
 
 bool hal_gpio_read(uint32_t pin) {
-    uint8_t port = (pin >> 16) & 0xFF;
-    uint8_t pin_num = pin & 0xFFFF;
+    uint8_t port = GPIO_PORT_OF(pin);
+    uint8_t pin_num = GPIO_NUMBER_OF(pin);
     if (port >= 4 || pin_num >= 16) return false;
     return gpio_states[port][pin_num];
 }
 
 int hal_gpio_toggle(uint32_t pin) {
-    uint8_t port = (pin >> 16) & 0xFF;
-    uint8_t pin_num = pin & 0xFFFF;
+    uint8_t port = GPIO_PORT_OF(pin);
+    uint8_t pin_num = GPIO_NUMBER_OF(pin);
     if (port >= 4 || pin_num >= 16) return -1;
     gpio_states[port][pin_num] = !gpio_states[port][pin_num];
     return 0;
@@ -80,7 +80,10 @@ int hal_timer_stop(void) {
 uint32_t hal_get_tick_ms(void) {
     struct timeval now;
     gettimeofday(&now, NULL);
-    return (uint32_t)((now.tv_sec - timer_start.tv_sec) * 1000 + 
+    if (timer_start.tv_sec == 0 && timer_start.tv_usec == 0) {
+        timer_start = now;
+    }
+    return (uint32_t)((now.tv_sec - timer_start.tv_sec) * 1000 +
                       (now.tv_usec - timer_start.tv_usec) / 1000);
 }
 
@@ -130,7 +133,9 @@ int hal_uart_printf(uint8_t uart_id, const char *format, ...) {
     va_start(args, format);
     int len = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
-    return hal_uart_send(uart_id, (uint8_t*)buffer, (uint16_t)len);
+    if (len < 0) return -1;
+    if (len >= (int)sizeof(buffer)) len = (int)sizeof(buffer) - 1;
+    return hal_uart_send(uart_id, (const uint8_t*)buffer, (uint16_t)len);
 }
 
 /* ============================================================================

@@ -150,7 +150,7 @@ int wdg_record_fault(FaultType type, uint8_t task_id, uint32_t error_code, const
     /* Update health counters */
     switch (type) {
         case FAULT_SENSOR_FAILURE:
-            system_health.comm_errors++;
+            /* Sensor failures are recorded in the fault log; they are not communication errors. */
             break;
         case FAULT_MEMORY_CORRUPTION:
             system_health.ram_errors++;

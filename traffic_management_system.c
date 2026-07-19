@@ -181,7 +181,7 @@ static void get_timestamp_str(char *buf, size_t len) {
     strftime(buf, len, "%Y-%m-%d %H:%M:%S", tm_info);
 }
 
-static void log_event(const char *format, ...) {
+static void log_event(const char *component, const char *format, ...) {
     char timestamp[32];
     char buffer[LOG_BUFFER_SIZE];
     va_list args;
@@ -192,7 +192,7 @@ static void log_event(const char *format, ...) {
     va_end(args);
 
     pthread_mutex_lock(&g_log_mutex);
-    printf("[%s] %s\n", timestamp, buffer);
+    printf("[%s] [%s] %s\n", timestamp, component ? component : "LOG", buffer);
     fflush(stdout);
     pthread_mutex_unlock(&g_log_mutex);
 }
@@ -316,9 +316,9 @@ static void traffic_system_shutdown(void) {
     g_running = false;
     pthread_mutex_unlock(&g_system.lock);
 
+    log_event("SYSTEM", "Traffic Management System shutdown complete");
     pthread_mutex_destroy(&g_system.lock);
     pthread_mutex_destroy(&g_log_mutex);
-    log_event("SYSTEM", "Traffic Management System shutdown complete");
 }
 
 /* ============================================================================
@@ -416,46 +416,27 @@ static bool enqueue_vehicle(Direction dir, VehicleType type, uint32_t priority) 
     return true;
 }
 
-static bool dequeue_vehicle(Direction dir) {
-    pthread_mutex_lock(&g_system.lock);
+/* Caller must hold g_system.lock. */
+static bool dequeue_vehicle_locked(Direction dir) {
+    if (dir >= NUM_DIRECTIONS || g_system.queue_count == 0) return false;
 
-    if (g_system.queue_count == 0) {
-        pthread_mutex_unlock(&g_system.lock);
-        return false;
+    uint32_t offset;
+    for (offset = 0; offset < g_system.queue_count; offset++) {
+        uint32_t index = (g_system.queue_head + offset) % MAX_QUEUE_LENGTH;
+        if (g_system.queue[index].approach == dir) break;
     }
+    if (offset == g_system.queue_count) return false;
 
-    /* Find first vehicle matching direction */
-    uint32_t idx = g_system.queue_head;
-    bool found = false;
-
-    for (uint32_t i = 0; i < g_system.queue_count; i++) {
-        uint32_t check_idx = (g_system.queue_head + i) % MAX_QUEUE_LENGTH;
-        if (g_system.queue[check_idx].approach == dir && !g_system.queue[check_idx].processed) {
-            idx = check_idx;
-            found = true;
-            break;
-        }
+    for (uint32_t i = offset; i + 1 < g_system.queue_count; i++) {
+        uint32_t destination = (g_system.queue_head + i) % MAX_QUEUE_LENGTH;
+        uint32_t source = (g_system.queue_head + i + 1) % MAX_QUEUE_LENGTH;
+        g_system.queue[destination] = g_system.queue[source];
     }
-
-    if (!found) {
-        pthread_mutex_unlock(&g_system.lock);
-        return false;
-    }
-
-    g_system.queue[idx].processed = true;
-    if (g_system.lanes[dir].vehicle_count > 0) {
-        g_system.lanes[dir].vehicle_count--;
-    }
-
-    /* Remove from queue by shifting (simplified) */
-    /* In production, use a proper priority queue */
-    if (idx == g_system.queue_head) {
-        g_system.queue_head = (g_system.queue_head + 1) % MAX_QUEUE_LENGTH;
-    }
+    g_system.queue_tail = (g_system.queue_tail + MAX_QUEUE_LENGTH - 1) % MAX_QUEUE_LENGTH;
+    memset(&g_system.queue[g_system.queue_tail], 0, sizeof(g_system.queue[0]));
     g_system.queue_count--;
+    if (g_system.lanes[dir].vehicle_count > 0) g_system.lanes[dir].vehicle_count--;
     g_system.total_vehicles_processed++;
-
-    pthread_mutex_unlock(&g_system.lock);
     return true;
 }
 
@@ -549,8 +530,9 @@ static void clear_emergency_preemption(Direction dir) {
     }
 
     g_system.lanes[dir].emergency_override = false;
-    if (g_system.emergency_count > 0) {
-        g_system.emergency_count--;
+    g_system.emergency_count = 0;
+    for (int i = 0; i < MAX_EMERGENCY_VEHICLES; i++) {
+        if (g_emergency_alerts[i].active) g_system.emergency_count++;
     }
 
     if (g_system.emergency_count == 0) {
@@ -575,14 +557,14 @@ static bool detect_congestion(void) {
     for (int d = 0; d < NUM_DIRECTIONS; d++) {
         total_waiting += g_system.lanes[d].vehicle_count;
         float density = calculate_density(&g_system.lanes[d]);
-        if (density > CONGESTION_THRESHOLD) {
+        if (density > (CONGESTION_THRESHOLD / 100.0f)) {
             congested = true;
         }
     }
 
     /* System-wide congestion check */
     float system_load = (float)total_waiting / (NUM_DIRECTIONS * MAX_QUEUE_LENGTH);
-    if (system_load > CONGESTION_THRESHOLD) {
+    if (system_load > (CONGESTION_THRESHOLD / 100.0f)) {
         congested = true;
     }
 
@@ -650,13 +632,13 @@ static void execute_phase_transition(void) {
             }
 
             tick_counter++;
-            if (tick_counter >= current->green_duration) {
+            if (tick_counter >= current->green_duration * (1000U / SYSTEM_TICK_MS)) {
                 tick_counter = 0;
                 phase_step = 1;
                 /* Process vehicles that passed during green */
                 uint32_t processed = current->vehicle_count / 2 + 1;
                 for (uint32_t i = 0; i < processed; i++) {
-                    dequeue_vehicle(current_green_dir);
+                    dequeue_vehicle_locked(current_green_dir);
                 }
             }
             break;
@@ -664,7 +646,7 @@ static void execute_phase_transition(void) {
         case 1: /* YELLOW phase */
             set_light_state(current_green_dir, LIGHT_YELLOW);
             tick_counter++;
-            if (tick_counter >= YELLOW_TIME) {
+            if (tick_counter >= YELLOW_TIME * (1000U / SYSTEM_TICK_MS)) {
                 tick_counter = 0;
                 phase_step = 2;
             }
@@ -673,7 +655,7 @@ static void execute_phase_transition(void) {
         case 2: /* ALL-RED clearance phase */
             set_light_state(current_green_dir, LIGHT_RED);
             tick_counter++;
-            if (tick_counter >= ALL_RED_TIME) {
+            if (tick_counter >= ALL_RED_TIME * (1000U / SYSTEM_TICK_MS)) {
                 tick_counter = 0;
                 phase_step = 3;
             }
@@ -796,7 +778,7 @@ static void perform_health_check(void) {
     for (int d = 0; d < NUM_DIRECTIONS; d++) {
         if (g_system.lanes[d].state == LIGHT_GREEN) {
             stuck_counter[d]++;
-            if (stuck_counter[d] > (MAX_GREEN_TIME + 10) * 10) {
+            if (stuck_counter[d] > (MAX_GREEN_TIME + 10) * (1000U / SYSTEM_TICK_MS)) {
                 fault = true;
                 snprintf(fault_msg, sizeof(fault_msg), 
                          "Stuck GREEN at %s", direction_to_str((Direction)d));
@@ -812,7 +794,7 @@ static void perform_health_check(void) {
 
     if (fault && !g_system.system_fault) {
         g_system.system_fault = true;
-        strncpy(g_system.fault_message, fault_msg, sizeof(g_system.fault_message) - 1);
+        snprintf(g_system.fault_message, sizeof(g_system.fault_message), "%s", fault_msg);
         g_system.previous_mode = g_system.current_mode;
         g_system.current_mode = MODE_FAULT;
         log_event("FAULT", "System fault detected: %s", fault_msg);

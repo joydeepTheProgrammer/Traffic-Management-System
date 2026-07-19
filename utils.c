@@ -32,7 +32,7 @@ void get_timestamp_str(char *buf, size_t len) {
  * ============================================================================ */
 static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void log_event(const char *format, ...) {
+void log_event(const char *component, const char *format, ...) {
     char timestamp[32];
     char buffer[LOG_BUFFER_SIZE];
     va_list args;
@@ -43,7 +43,7 @@ void log_event(const char *format, ...) {
     va_end(args);
 
     pthread_mutex_lock(&g_log_mutex);
-    printf("[%s] %s\n", timestamp, buffer);
+    printf("[%s] [%s] %s\n", timestamp, component ? component : "LOG", buffer);
     fflush(stdout);
     pthread_mutex_unlock(&g_log_mutex);
 }

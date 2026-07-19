@@ -165,7 +165,7 @@ const char* light_to_str(TrafficLightState s);
 const char* mode_to_str(SystemMode m);
 float calculate_density(LaneController *lane);
 float calculate_moving_average(LaneController *lane);
-void log_event(const char *format, ...);
+void log_event(const char *component, const char *format, ...);
 void get_timestamp_str(char *buf, size_t len);
 
 #ifdef __cplusplus

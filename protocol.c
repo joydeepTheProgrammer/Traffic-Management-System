@@ -37,20 +37,27 @@ uint32_t protocol_calculate_crc(const uint8_t *data, uint16_t len) {
  * FRAME ENCODING
  * ============================================================================ */
 int protocol_encode_frame(ProtocolFrame *frame, uint8_t cmd, const uint8_t *payload, uint16_t len) {
-    if (frame == NULL || len > PROTO_MAX_PAYLOAD) return -1;
+    uint8_t crc_data[PROTO_HEADER_SIZE - 2 + PROTO_MAX_PAYLOAD];
+
+    if (frame == NULL || len > PROTO_MAX_PAYLOAD || (len > 0 && payload == NULL)) return -1;
 
     frame->sync1 = PROTO_SYNC_BYTE_1;
     frame->sync2 = PROTO_SYNC_BYTE_2;
     frame->length = len;
     frame->cmd = cmd;
 
-    if (payload != NULL && len > 0) {
+    if (len > 0) {
         memcpy(frame->payload, payload, len);
     }
 
-    /* Calculate CRC over header + payload */
-    uint16_t crc_len = PROTO_HEADER_SIZE - 2 + len; /* sync bytes excluded from CRC */
-    frame->crc = protocol_calculate_crc((const uint8_t*)&frame->length, crc_len);
+    /* CRC is calculated over the serialized, big-endian body. */
+    crc_data[0] = (uint8_t)(len >> 8);
+    crc_data[1] = (uint8_t)len;
+    crc_data[2] = cmd;
+    if (len > 0) {
+        memcpy(&crc_data[3], payload, len);
+    }
+    frame->crc = protocol_calculate_crc(crc_data, (uint16_t)(3 + len));
 
     return 0;
 }
