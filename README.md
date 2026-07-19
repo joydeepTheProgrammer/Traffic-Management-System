@@ -15,6 +15,11 @@ This repository is a C99 simulation of a four-way adaptive traffic controller. I
 - Watchdog task registration, task heartbeats, fault logging, and health checks.
 - Binary UART framing with CRC-32.
 
+## Circuit Diagram
+
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/d35424a9-70be-4309-b65a-95a83630c5fa" />
+
+
 ## Current limits
 
 - The HAL is a host-side simulator. GPIO, UART, ADC, flash, and watchdog calls do not control hardware.
