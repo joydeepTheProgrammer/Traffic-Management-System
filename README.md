@@ -30,7 +30,7 @@ The project contains two deployment targets:
 
 <img width="8192" height="3617" alt="Energy Calibration and Dose-2026-07-20-095257" src="https://github.com/user-attachments/assets/c333ed3e-314f-4c38-a188-ccb9091f04ee" />
 
-```
+---
 
 ### 📌 GPIO Pin Map (`hal.h`)
 
