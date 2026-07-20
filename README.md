@@ -82,6 +82,23 @@ The project contains two deployment targets:
      STM32F407VG         IR Sensors (3.3V Compatible)
 ```
 
+Pin Assignment
+| Function          | STM32F407VG Pin                |
+| ----------------- | ------------------------------ |
+| IR Sensor 1 OUT   | PA0 (EXTI0)                    |
+| IR Sensor 2 OUT   | PA1 (EXTI1)                    |
+| Lane 1 Red LED    | PD12                           |
+| Lane 1 Yellow LED | PD13                           |
+| Lane 1 Green LED  | PD14                           |
+| Lane 2 Red LED    | PD15                           |
+| Lane 2 Yellow LED | PE0                            |
+| Lane 2 Green LED  | PE1                            |
+| LCD SDA           | PB7 (I2C1_SDA)                 |
+| LCD SCL           | PB6 (I2C1_SCL)                 |
+| STM32 Power       | 3.3V                           |
+| LCD Power         | 5V (or 3.3V-compatible module) |
+| Ground            | Common GND                     |
+
 ---
 
 ### 📌 GPIO Pin Map (`hal.h`)
