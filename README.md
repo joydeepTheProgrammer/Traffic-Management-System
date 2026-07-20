@@ -89,7 +89,7 @@ The monolithic simulator tests the adaptive algorithm, queue logic, and multi-th
 
 ```bash
 # Compile
-gcc -o traffic_system traffic_management_system.c -lpthread -lm -Wall -Wextra -Werror
+gcc -o main main.c -lpthread -lm -Wall -Wextra -Werror
 
 # Run
 ./traffic_system
@@ -100,7 +100,7 @@ The split files (`protocol.c`, `scheduler.c`, `watchdog.c`, `hal_sim.c`) represe
 
 ```bash
 # Compile (Example using standard gcc for the simulator HAL)
-gcc -o traffic_firmware hal_sim.c protocol.c scheduler.c watchdog.c utils.c -Wall -Wextra
+gcc -o main hal_sim.c protocol.c scheduler.c watchdog.c utils.c -Wall -Wextra
 ```
 
 ---
