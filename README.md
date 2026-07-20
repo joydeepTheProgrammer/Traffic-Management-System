@@ -28,7 +28,7 @@ The project contains two deployment targets:
 
 ## 📐 Circuit & Wiring Diagram
 
-
+<img width="8192" height="3617" alt="Energy Calibration and Dose-2026-07-20-095257" src="https://github.com/user-attachments/assets/c333ed3e-314f-4c38-a188-ccb9091f04ee" />
 
 ```
 
