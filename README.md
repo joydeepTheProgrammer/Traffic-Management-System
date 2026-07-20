@@ -27,7 +27,7 @@ The project contains two deployment targets:
 ---
  
 ## 📐 Circuit & Wiring Diagram
-
+```text
                     SMART TRAFFIC MANAGEMENT SYSTEM
                     ===============================
 
@@ -52,17 +52,18 @@ The project contains two deployment targets:
                     |      IR Sensor 2      |
                     |     Vehicle Detect    |
                     +-----------------------+
+
                                 |
       ---------------------------------------------------------------------
       |                         |                           |
       |                         |                           |
       |                         |                           |
       v                         v                           v
+
 +---------------------+   +---------------------+   +----------------------+
-|  Traffic Lights     |   |  Traffic Lights     |   |    16x2 I2C LCD      |
-|      Lane 1         |   |      Lane 2         |   |      Display         |
+| Traffic Lights      |   | Traffic Lights      |   |    16x2 I2C LCD      |
+| Lane 1              |   | Lane 2              |   |      Display         |
 +----------+----------+   +----------+----------+   +----------+-----------+
-           |                         |                         |
            |                         |                         |
            |                         |                         |
            v                         v                         |
@@ -73,19 +74,16 @@ The project contains two deployment targets:
            +-----------+-------------+-------------------------+
                        |                                       |
                        v                                       v
+
                  +-------------+                      +-------------+
-                 |   3.3V Rail |                      |  Common GND |
+                 |  3.3V Rail  |                      | Common GND  |
                  +-------------+                      +-------------+
-                       |
                        |
           +------------+------------+
           |                         |
-     STM32F407VG              IR Sensors
-                               (3.3V Compatible)
-                               
-                 (LCD powered at 5V if required,
-           with I²C level shifter if using 5V pull-ups)
-           
+     STM32F407VG         IR Sensors (3.3V Compatible)
+```
+---
 
 ### 📌 GPIO Pin Map (`hal.h`)
 
