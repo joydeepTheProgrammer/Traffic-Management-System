@@ -28,7 +28,7 @@ The project contains two deployment targets:
  
 ## 📐 Circuit & Wiring Diagram
 
-<img width="1572" height="1001" alt="image" src="https://github.com/user-attachments/assets/b94c35d9-4702-4261-8745-1cf5c1ee5163" />
+
 
 ---
 
