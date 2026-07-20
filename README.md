@@ -14,7 +14,7 @@ An advanced, real-time adaptive traffic control system designed for modern smart
 ## 📖 System Architecture
 
 The project contains two deployment targets:
-1. **POSIX Simulator (`traffic_management_system.c`)**: A monolithic, multi-threaded POSIX C implementation for Linux/PC simulation.
+1. **POSIX Simulator (`main.c`)**: A monolithic, multi-threaded POSIX C implementation for Linux/PC simulation.
 2. **Embedded Firmware (Modular)**: A modular firmware designed for an ARM Cortex-M4 MCU running a cooperative RTOS scheduler, featuring a Hardware Abstraction Layer (`hal.h`), watchdog, and binary communication protocol.
 
 ### Core Features
