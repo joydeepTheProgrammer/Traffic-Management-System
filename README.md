@@ -109,8 +109,13 @@ The project contains two deployment targets:
 | **East**  | PA6 | PA7 | PA8 | PB2 | - | PB10 |
 | **West**  | PA9 | PA10| PA11| PB3 | - | PB11 |
 
-> **Note on Outputs:** MCU GPIO pins cannot drive traffic lights directly. PORT A pins should connect to a driver stage (e.g., ULN2003 transistor array or Optoisolated Relay Module) which then switches the high-voltage traffic lamps.
-
+>Note:
+The STM32F407VG GPIO pins cannot directly drive traffic signal lamps.
+Each GPIO output should be connected to a driver stage (such as a ULN2003A
+Darlington transistor array, MOSFET driver, or an opto-isolated relay module,
+depending on the lamp voltage and current requirements). The driver stage
+provides the necessary current and voltage to safely switch the traffic lights
+while protecting the microcontroller.
 ---
 
 ## ⚙️ Traffic Logic Reference
