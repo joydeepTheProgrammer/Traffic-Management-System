@@ -1,369 +1,540 @@
 /**
  * @file main.c
- * @brief POSIX simulation entry point for the traffic management system.
+ * @brief Main firmware – Integrated Intelligent Vehicle Safety and Accident Prevention System
+ * @author Vehicle Safety System Project
+ * @version 1.0.0
+ *
+ * @target  ATmega328P @ 16 MHz
+ * @toolchain AVR-GCC + avrdude
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ *  SYSTEM OVERVIEW
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *  This firmware orchestrates 8 safety subsystems:
+ *
+ *  1. COLLISION AVOIDANCE   – 4× HC-SR04 ultrasonic sensors, brake relay
+ *  2. DRUNK DRIVER DETECT   – MQ-3 alcohol sensor, engine cut-off relay
+ *  3. CRASH / ROLLOVER      – MPU-6050 IMU, emergency SMS via SIM800L
+ *  4. LANE DEPARTURE        – 2× IR sensors, audible warning
+ *  5. DRIVER DROWSINESS     – GPS speed + time heuristic, audible warning
+ *  6. AUTO HEADLIGHTS       – LDR sensor, headlight relay
+ *  7. CABIN OVERHEAT        – DHT11 temperature sensor, evacuation alarm
+ *  8. GPS EMERGENCY BEACON  – NEO-6M GPS + SIM800L GSM on crash/alcohol
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ *  PIN MAP (ATmega328P)
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *  Port B:
+ *    PB0 – US FRONT TRIG       PB1 – US FRONT ECHO
+ *    PB2 – US REAR  TRIG       PB3 – US REAR  ECHO
+ *    PB4 – Headlight Relay     PB5 – Buzzer
+ *    PB6 – LED Collision       PB7 – LED Alcohol
+ *
+ *  Port C (analog side):
+ *    PC0 – US LEFT  TRIG       PC1 – US LEFT  ECHO
+ *    PC2 – US RIGHT TRIG       PC3 – US RIGHT ECHO
+ *    PC4 – LDR ADC (ADC4)      PC5 – MQ-3 ADC (ADC5)
+ *    PC4 – SDA (I2C) *shared*  PC5 – SCL (I2C) *shared*
+ *
+ *    NOTE: PC4/PC5 serve dual purpose.  Ultrasonic LEFT/RIGHT are on PC0-PC3.
+ *    I2C (TWI hardware) and ADC4/ADC5 can coexist because TWI uses the SDA/SCL
+ *    alternate functions and the LDR/MQ3 readings are taken outside I2C transactions.
+ *
+ *  Port D:
+ *    PD0 – Engine Cut-off Relay  PD1 – Brake Assist Relay
+ *    PD2 – GSM Power Key         PD3 – GSM TX (soft UART)
+ *    PD4 – GSM RX (soft UART)    PD5 – GPS TX (soft UART) [to GPS RX]
+ *    PD6 – GPS RX (soft UART)    PD7 – DHT11 Data
+ *    PD3 – LED Crash (conflicts with GSM TX; LED on PD3 removed, placed on PD8 if expanded)
+ *
+ *  Port C (digital):
+ *    PC4 – IR Left sensor         PC5 – IR Right sensor (digital mode)
+ *
+ *    DESIGN NOTE: PC4/PC5 used as digital IR inputs when I2C is idle and
+ *    ADC is not sampling.  In practice these sensors are read at different
+ *    phases in the loop.  For production, dedicate separate I/O expander pins
+ *    via PCF8574 for IR and use onboard ADC for LDR/MQ3 only.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ *  TIMING
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *  Timer0: 1 ms overflow ISR – system millisecond counter (g_system_ms).
+ *  Timer1: Free-running, used by ultrasonic driver for echo timing.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
  */
 
-#include <pthread.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
 #include <string.h>
-#include <time.h>
-#include <sys/time.h>
-#include "traffic_system.h"
-#include "hal.h"
-#include "protocol.h"
-#include "watchdog.h"
+#include <stdint.h>
 
-#define TASK_SENSOR       1U
-#define TASK_CONTROL      2U
-#define TASK_COMM         3U
-#define TASK_DIAGNOSTICS  4U
-#define TASK_SIMULATION   5U
-#define CONTROL_TICK_MS   100U
-#define GREEN_TICKS(seconds) ((seconds) * (1000U / CONTROL_TICK_MS))
+/* ── Driver includes ─────────────────────────────────────────────────────── */
+#include "uart.h"
+#include "lcd_i2c.h"
+#include "gsm_sim800l.h"
+#include "gps_neo6m.h"
 
-static pthread_mutex_t system_lock = PTHREAD_MUTEX_INITIALIZER;
-static volatile sig_atomic_t system_running = 1;
+/* ── Sensor includes ─────────────────────────────────────────────────────── */
+#include "ultrasonic.h"
+#include "mpu6050.h"
+#include "mq3.h"
+#include "dht11.h"
+#include "ir_sensor.h"
+#include "ldr.h"
 
-static uint32_t light_base(Direction direction) {
-    return TRAFFIC_NORTH_RED + ((uint32_t)direction * 3U);
+/* ── Safety module includes ──────────────────────────────────────────────── */
+#include "collision.h"
+#include "alerts.h"
+
+/* ════════════════════════════════════════════════════════════════════════════
+ *  Global system millisecond counter
+ *  Incremented by Timer0 Compare Match A ISR every 1 ms.
+ * ════════════════════════════════════════════════════════════════════════════ */
+volatile uint32_t g_system_ms = 0;
+
+ISR(TIMER0_COMPA_vect)
+{
+    g_system_ms++;
 }
 
-static void set_light_locked(Direction direction, TrafficLightState state) {
-    uint32_t base = light_base(direction);
-    hal_gpio_write(base, state == LIGHT_RED);
-    hal_gpio_write(base + 1U, state == LIGHT_YELLOW || state == LIGHT_BLINKING_YELLOW);
-    hal_gpio_write(base + 2U, state == LIGHT_GREEN);
-    g_system.lanes[direction].state = state;
+/* ════════════════════════════════════════════════════════════════════════════
+ *  Timer0 initialisation: CTC mode, 1 ms period at 16 MHz
+ *  OCR0A = (F_CPU / (prescaler × 1000)) - 1 = (16000000 / (64 × 1000)) - 1 = 249
+ * ════════════════════════════════════════════════════════════════════════════ */
+static void timer0_ms_init(void)
+{
+    TCCR0A = (1U << WGM01);           /* CTC mode                         */
+    TCCR0B = (1U << CS01) | (1U << CS00); /* Prescaler = 64               */
+    OCR0A  = 249U;                    /* Compare value for 1 ms period     */
+    TIMSK0 = (1U << OCIE0A);          /* Enable compare match A interrupt  */
 }
 
-static void set_all_red_locked(void) {
-    for (Direction direction = DIR_NORTH; direction < NUM_DIRECTIONS; direction++) {
-        set_light_locked(direction, LIGHT_RED);
+/* ════════════════════════════════════════════════════════════════════════════
+ *  Drowsiness detection state
+ * ════════════════════════════════════════════════════════════════════════════ */
+#define DROWSY_CHECK_INTERVAL_MS   30000UL  /**< Check every 30 seconds      */
+#define DROWSY_SPEED_STABLE_KMH    5.0f     /**< Max speed variance allowed  */
+#define DROWSY_MIN_DRIVE_SPEED_KMH 15.0f   /**< Below this: not driving     */
+
+typedef struct {
+    float    last_speed_kmh;
+    uint32_t last_check_ms;
+    uint8_t  alert_count;           /**< Consecutive drowsy alerts       */
+} DrowsyState_t;
+
+/* ════════════════════════════════════════════════════════════════════════════
+ *  LCD display helper – shows 2 lines, max 16 chars each
+ * ════════════════════════════════════════════════════════════════════════════ */
+static void lcd_show(const char *line1, const char *line2)
+{
+    lcd_clear();
+    lcd_set_cursor(0, 0);
+    lcd_print_str(line1);
+    lcd_set_cursor(0, 1);
+    lcd_print_str(line2);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ *  Crash/Alcohol emergency handler – sends SMS and engages safety systems
+ * ════════════════════════════════════════════════════════════════════════════ */
+static void handle_emergency(const char *reason, float lat, float lon,
+                              uint8_t cut_engine)
+{
+    /* Engage actuators immediately */
+    if (cut_engine) {
+        engine_relay_cut();
     }
-}
+    brake_relay_engage();
 
-static bool enqueue_vehicle_locked(Direction direction, VehicleType type, uint32_t priority) {
-    if (direction >= NUM_DIRECTIONS || g_system.queue_count >= MAX_QUEUE_LENGTH) return false;
-
-    VehicleQueue *vehicle = &g_system.queue[g_system.queue_tail];
-    memset(vehicle, 0, sizeof(*vehicle));
-    vehicle->vehicle_id = g_system.total_vehicles_processed + g_system.queue_count + 1U;
-    vehicle->type = type;
-    vehicle->approach = direction;
-    vehicle->priority = priority;
-    gettimeofday(&vehicle->arrival_time, NULL);
-    g_system.queue_tail = (g_system.queue_tail + 1U) % MAX_QUEUE_LENGTH;
-    g_system.queue_count++;
-    g_system.lanes[direction].vehicle_count++;
-    return true;
-}
-
-/* Remove the first queued vehicle for a direction without leaving ring-buffer holes. */
-static bool dequeue_vehicle_locked(Direction direction) {
-    if (direction >= NUM_DIRECTIONS || g_system.queue_count == 0U) return false;
-
-    uint32_t offset;
-    for (offset = 0; offset < g_system.queue_count; offset++) {
-        uint32_t index = (g_system.queue_head + offset) % MAX_QUEUE_LENGTH;
-        if (g_system.queue[index].approach == direction) break;
+    /* Flash crash LED and sound critical alarm */
+    for (uint8_t i = 0; i < 5U; i++) {
+        buzzer_beep(ALERT_CRITICAL);
     }
-    if (offset == g_system.queue_count) return false;
 
-    for (uint32_t i = offset; i + 1U < g_system.queue_count; i++) {
-        uint32_t destination = (g_system.queue_head + i) % MAX_QUEUE_LENGTH;
-        uint32_t source = (g_system.queue_head + i + 1U) % MAX_QUEUE_LENGTH;
-        g_system.queue[destination] = g_system.queue[source];
-    }
-    g_system.queue_tail = (g_system.queue_tail + MAX_QUEUE_LENGTH - 1U) % MAX_QUEUE_LENGTH;
-    memset(&g_system.queue[g_system.queue_tail], 0, sizeof(g_system.queue[0]));
-    g_system.queue_count--;
-    if (g_system.lanes[direction].vehicle_count > 0U) g_system.lanes[direction].vehicle_count--;
-    g_system.total_vehicles_processed++;
-    return true;
+    /* Display on LCD */
+    lcd_show("!! EMERGENCY !!", reason);
+
+    /* Log to serial (debug) */
+    uart_puts("EMERGENCY: ");
+    uart_puts(reason);
+    uart_puts("\r\n");
+
+    /* Send emergency SMS with GPS location */
+    gsm_send_emergency_sms(lat, lon, reason);
+
+    /* Wait 5 seconds before resuming main loop */
+    _delay_ms(5000);
+
+    /* Release brake (engine cut stays until manual reset or restart) */
+    brake_relay_release();
 }
 
-static void activate_emergency_locked(Direction direction) {
-    if (direction >= NUM_DIRECTIONS || g_system.lanes[direction].emergency_override) return;
-    if (g_system.emergency_count == 0U) g_system.previous_mode = g_system.current_mode;
-    g_system.lanes[direction].emergency_override = true;
-    g_system.emergency_count++;
-    g_system.current_mode = MODE_EMERGENCY;
-}
+/* ════════════════════════════════════════════════════════════════════════════
+ *  Collision display helper
+ * ════════════════════════════════════════════════════════════════════════════ */
+static void display_collision_info(const CollisionData_t *col)
+{
+    static const char dir_chars[US_SENSOR_COUNT] = {'F', 'R', 'L', 'r'};
+    char line[17] = "Col:            ";
 
-static void clear_emergency_locked(Direction direction) {
-    if (direction >= NUM_DIRECTIONS || !g_system.lanes[direction].emergency_override) return;
-    g_system.lanes[direction].emergency_override = false;
-    g_system.emergency_count--;
-    if (g_system.emergency_count == 0U) g_system.current_mode = g_system.previous_mode;
-}
-
-static void update_mode_locked(void) {
-    time_t now = time(NULL);
-    struct tm *local_time = localtime(&now);
-    if (local_time == NULL) return;
-    bool night = local_time->tm_hour >= 22 || local_time->tm_hour < 5;
-    uint32_t waiting = 0U;
-    for (Direction direction = DIR_NORTH; direction < NUM_DIRECTIONS; direction++) {
-        waiting += g_system.lanes[direction].vehicle_count;
-    }
-    float load = (float)waiting / (float)(NUM_DIRECTIONS * MAX_QUEUE_LENGTH);
-
-    if (g_system.current_mode != MODE_EMERGENCY) {
-        if (night) {
-            if (g_system.current_mode != MODE_NIGHT) g_system.previous_mode = g_system.current_mode;
-            g_system.current_mode = MODE_NIGHT;
-        } else if (g_system.current_mode == MODE_NIGHT) {
-            g_system.current_mode = MODE_NORMAL;
-        } else if (load >= (CONGESTION_THRESHOLD / 100.0f)) {
-            if (g_system.current_mode != MODE_CONGESTION) g_system.previous_mode = g_system.current_mode;
-            g_system.current_mode = MODE_CONGESTION;
-        } else if (g_system.current_mode == MODE_CONGESTION) {
-            g_system.current_mode = g_system.previous_mode == MODE_CONGESTION ? MODE_NORMAL : g_system.previous_mode;
-        }
-    }
-    g_system.system_efficiency = 1.0f - load;
-}
-
-static uint32_t adaptive_green_locked(Direction direction) {
-    LaneController *lane = &g_system.lanes[direction];
-    float density = calculate_density(lane);
-    lane->density_history[lane->history_index] = density;
-    lane->history_index = (uint8_t)((lane->history_index + 1U) % HISTORY_SIZE);
-    uint32_t green = MIN_GREEN_TIME + (uint32_t)(density * 30.0f);
-    if (lane->pedestrian_waiting > 0U) green += lane->pedestrian_waiting > 5U ? 10U : 5U;
-    return green > MAX_GREEN_TIME ? MAX_GREEN_TIME : green;
-}
-
-static void *sensor_task(void *unused) {
-    (void)unused;
-    log_event("SENSOR", "Sensor task started");
-    while (system_running) {
-        wdg_pet(TASK_SENSOR);
-        pthread_mutex_lock(&system_lock);
-        for (Direction direction = DIR_NORTH; direction < NUM_DIRECTIONS; direction++) {
-            for (uint32_t sensor_index = 0; sensor_index < MAX_SENSORS_PER_LANE; sensor_index++) {
-                Sensor *sensor = &g_system.sensors[direction][sensor_index];
-                if (!sensor->active) continue;
-                if (sensor->type == SENSOR_IR) sensor->last_reading = hal_gpio_read(SENSOR_IR_NORTH + direction) ? 1.0f : 0.0f;
-                else if (sensor->type == SENSOR_INDUCTIVE) sensor->last_reading = hal_adc_read_voltage(ADC_CHANNEL_0 + direction);
-                else sensor->last_reading = (float)g_system.lanes[direction].vehicle_count;
-                gettimeofday(&sensor->last_update, NULL);
-            }
-        }
-        pthread_mutex_unlock(&system_lock);
-        hal_delay_ms(SENSOR_SAMPLE_RATE_MS);
-    }
-    return NULL;
-}
-
-static void *control_task(void *unused) {
-    (void)unused;
-    Direction current = DIR_NORTH;
-    uint32_t phase = 0U;
-    uint32_t ticks = 0U;
-    bool blink = false;
-    log_event("CONTROL", "Control task started");
-    while (system_running) {
-        wdg_pet(TASK_CONTROL);
-        pthread_mutex_lock(&system_lock);
-        update_mode_locked();
-        if (g_system.current_mode == MODE_EMERGENCY) {
-            for (Direction d = DIR_NORTH; d < NUM_DIRECTIONS; d++) {
-                set_light_locked(d, g_system.lanes[d].emergency_override ? LIGHT_GREEN : LIGHT_RED);
-            }
-        } else if (g_system.current_mode == MODE_NIGHT) {
-            blink = !blink;
-            for (Direction d = DIR_NORTH; d < NUM_DIRECTIONS; d++) {
-                set_light_locked(d, blink ? LIGHT_BLINKING_YELLOW : LIGHT_OFF);
-            }
-        } else {
-            LaneController *lane = &g_system.lanes[current];
-            if (phase == 0U) {
-                set_all_red_locked();
-                set_light_locked(current, LIGHT_GREEN);
-                if (++ticks >= GREEN_TICKS(lane->green_duration)) {
-                    ticks = 0U;
-                    phase = 1U;
-                    while (dequeue_vehicle_locked(current)) { }
-                }
-            } else if (phase == 1U) {
-                set_light_locked(current, LIGHT_YELLOW);
-                if (++ticks >= GREEN_TICKS(YELLOW_TIME)) { ticks = 0U; phase = 2U; }
-            } else if (phase == 2U) {
-                set_all_red_locked();
-                if (++ticks >= GREEN_TICKS(ALL_RED_TIME)) { ticks = 0U; phase = 3U; }
+    for (uint8_t i = 0; i < US_SENSOR_COUNT; i++) {
+        if (col->direction_flags & (1U << i)) {
+            line[4 + i * 2]     = dir_chars[i];
+            if (col->dist_cm[i] < 100U) {
+                line[5 + i * 2] = (char)('0' + col->dist_cm[i] / 10U);
             } else {
-                Direction next = (Direction)((current + 1U) % NUM_DIRECTIONS);
-                uint32_t best = 0U;
-                for (Direction d = DIR_NORTH; d < NUM_DIRECTIONS; d++) {
-                    if (d == current) continue;
-                    uint32_t score = g_system.lanes[d].vehicle_count + 2U * g_system.lanes[d].pedestrian_waiting;
-                    if (score > best) { best = score; next = d; }
+                line[5 + i * 2] = '!';
+            }
+        }
+    }
+    lcd_show("Collision Warn!", line);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ *  Normal status display (speed + temp)
+ * ════════════════════════════════════════════════════════════════════════════ */
+static void display_normal_status(float speed_kmh, uint8_t temp_c)
+{
+    /* Line 1: "Speed: XXX km/h " */
+    char line1[17] = "Speed:     km/h ";
+    int16_t sp = (int16_t)speed_kmh;
+    if (sp < 0) sp = 0;
+    line1[7]  = (char)('0' + (sp / 100) % 10);
+    line1[8]  = (char)('0' + (sp / 10)  % 10);
+    line1[9]  = (char)('0' + (sp)       % 10);
+
+    /* Line 2: "Temp:  XX C OK  " */
+    char line2[17] = "Temp:  XX C     ";
+    line2[7] = (char)('0' + (temp_c / 10) % 10);
+    line2[8] = (char)('0' + (temp_c)      % 10);
+
+    lcd_show(line1, line2);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ *  System initialisation
+ * ════════════════════════════════════════════════════════════════════════════ */
+static void system_init(void)
+{
+    /* Disable watchdog (just in case of reset loop) */
+    /* wdt_disable() — included in <avr/wdt.h> if needed */
+
+    /* Timer0: 1 ms system tick */
+    timer0_ms_init();
+
+    /* Hardware UART for debug */
+    uart_init();
+
+    /* Enable global interrupts (needed for Timer0 ISR) */
+    sei();
+
+    uart_puts("\r\n== Vehicle Safety System v1.0 ==\r\n");
+    uart_puts("Initialising subsystems...\r\n");
+
+    /* ADC (shared by MQ-3 and LDR) */
+    mq3_init();      /* Calls adc_init_shared() internally */
+    ldr_init();      /* Uses already-initialised ADC        */
+
+    /* I2C devices (TWI init inside mpu6050_init) */
+    MPU6050_Status_t imu_status = mpu6050_init();
+    if (imu_status != MPU6050_OK) {
+        uart_puts("WARN: MPU6050 init failed\r\n");
+    }
+
+    /* LCD (uses same I2C bus) */
+    lcd_init();
+    lcd_show("Vehicle Safety", "System v1.0");
+    _delay_ms(2000);
+
+    /* Remaining sensors */
+    dht11_init();
+    ir_sensor_init();
+
+    /* Collision module (wraps ultrasonic_init) */
+    collision_init();
+
+    /* Actuators and LEDs */
+    alerts_init();
+
+    /* GPS */
+    gps_init();
+
+    /* GSM */
+    gsm_init();
+
+    uart_puts("All subsystems ready.\r\n");
+    lcd_show("Systems OK", "Warming up MQ3..");
+    _delay_ms(1000);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ *  MAIN LOOP
+ * ════════════════════════════════════════════════════════════════════════════ */
+int main(void)
+{
+    /* ── Initialise all subsystems ──────────────────────────────────────── */
+    system_init();
+
+    /* ── Local state variables ──────────────────────────────────────────── */
+    CollisionData_t  collision_data;
+    MPU6050_Data_t   imu_data;
+    DHT11_Data_t     dht_data;
+    GPS_Data_t       gps_data;
+    DrowsyState_t    drowsy = {0.0f, 0, 0};
+
+    uint8_t  alert_flags   = 0;
+    AlertLevel_t alert_lvl = ALERT_NONE;
+
+    /* Loop counter for round-robin scheduling of slow sensors */
+    uint32_t loop_count    = 0;
+
+    /* Crash SMS rate-limiter: don't send more than 1 SMS per 60 s */
+    uint32_t last_sms_ms   = 0;
+    uint8_t  crash_latched = 0;  /* Latched until manual reset */
+
+    /* ── GPS data cache (read every 10 loops) ───────────────────────────── */
+    float gps_lat = 0.0f, gps_lon = 0.0f, gps_speed = 0.0f;
+    uint8_t gps_fix = 0;
+
+    /* ── Main processing loop ───────────────────────────────────────────── */
+    while (1) {
+        alert_flags = 0;
+        alert_lvl   = ALERT_NONE;
+        loop_count++;
+
+        /* ════════════════════════════════════════════════════════════════
+         *  1. COLLISION AVOIDANCE (every loop)
+         * ════════════════════════════════════════════════════════════════ */
+        CollisionState_t col_state = collision_update(&collision_data);
+
+        if (col_state == COL_STATE_CRITICAL) {
+            /* Critical: engage brake assist for front/rear proximity */
+            alert_flags |= ALERT_FLAG_COLLISION;
+            alert_lvl    = ALERT_CRITICAL;
+
+            if ((collision_data.direction_flags & COL_DIR_FRONT) ||
+                (collision_data.direction_flags & COL_DIR_REAR)) {
+                brake_relay_engage();
+            }
+            display_collision_info(&collision_data);
+
+        } else if (col_state == COL_STATE_WARNING) {
+            alert_flags |= ALERT_FLAG_COLLISION;
+            if (alert_lvl < ALERT_WARNING) {
+                alert_lvl = ALERT_WARNING;
+            }
+            brake_relay_release();
+            display_collision_info(&collision_data);
+
+        } else {
+            brake_relay_release();
+        }
+
+        /* ════════════════════════════════════════════════════════════════
+         *  2. CRASH / ROLLOVER DETECTION (every loop – IMU is fast)
+         * ════════════════════════════════════════════════════════════════ */
+        if (mpu6050_read(&imu_data) == MPU6050_OK) {
+
+            if ((mpu6050_crash_detected(&imu_data) ||
+                 mpu6050_rollover_detected(&imu_data)) && !crash_latched) {
+
+                crash_latched = 1;
+                alert_flags  |= ALERT_FLAG_CRASH;
+                alert_lvl     = ALERT_CRITICAL;
+
+                uart_puts("CRASH DETECTED! accel=");
+                /* Minimal float print: integer part only for debug */
+                uart_putchar((char)('0' + (int)imu_data.accel_magnitude_g));
+                uart_puts("g\r\n");
+
+                /* Throttle SMS: max one per 60 s */
+                if ((g_system_ms - last_sms_ms) > 60000UL || last_sms_ms == 0) {
+                    last_sms_ms = g_system_ms;
+                    const char *reason = mpu6050_rollover_detected(&imu_data)
+                                         ? "ROLLOVER" : "CRASH";
+                    handle_emergency(reason, gps_lat, gps_lon, 0);
                 }
-                current = next;
-                g_system.lanes[current].green_duration = adaptive_green_locked(current);
-                phase = 0U;
             }
         }
-        pthread_mutex_unlock(&system_lock);
-        wdg_check_all();
-        hal_delay_ms(CONTROL_TICK_MS);
-    }
-    return NULL;
-}
 
-static void process_frame(uint8_t uart_id, const ProtocolFrame *frame) {
-    pthread_mutex_lock(&system_lock);
-    switch (frame->cmd) {
-        case CMD_HEARTBEAT:
-            protocol_send_response(uart_id, CMD_HEARTBEAT, RESP_OK, NULL, 0U);
-            break;
-        case CMD_STATUS_REQ:
-            protocol_send_status(uart_id);
-            break;
-        case CMD_SET_LIGHT:
-            if (frame->length < sizeof(LightControlPayload)) protocol_send_error(uart_id, RESP_INVALID_PARAM);
-            else {
-                const LightControlPayload *payload = (const LightControlPayload *)frame->payload;
-                if (payload->direction >= NUM_DIRECTIONS || payload->state > LIGHT_GREEN) protocol_send_error(uart_id, RESP_INVALID_PARAM);
-                else { set_light_locked((Direction)payload->direction, (TrafficLightState)payload->state); protocol_send_response(uart_id, CMD_SET_LIGHT, RESP_OK, NULL, 0U); }
-            }
-            break;
-        case CMD_EMERGENCY_TRIGGER:
-        case CMD_EMERGENCY_CLEAR:
-            if (frame->length < sizeof(EmergencyPayload)) protocol_send_error(uart_id, RESP_INVALID_PARAM);
-            else {
-                const EmergencyPayload *payload = (const EmergencyPayload *)frame->payload;
-                if (payload->direction >= NUM_DIRECTIONS) protocol_send_error(uart_id, RESP_INVALID_PARAM);
-                else { if (frame->cmd == CMD_EMERGENCY_TRIGGER) activate_emergency_locked((Direction)payload->direction); else clear_emergency_locked((Direction)payload->direction); protocol_send_response(uart_id, frame->cmd, RESP_OK, NULL, 0U); }
-            }
-            break;
-        case CMD_PEDESTRIAN_REQUEST:
-            if (frame->length < 1U || frame->payload[0] >= NUM_DIRECTIONS) protocol_send_error(uart_id, RESP_INVALID_PARAM);
-            else { g_system.lanes[frame->payload[0]].pedestrian_waiting++; protocol_send_response(uart_id, CMD_PEDESTRIAN_REQUEST, RESP_OK, NULL, 0U); }
-            break;
-        default:
-            protocol_send_error(uart_id, RESP_NOT_SUPPORTED);
-            break;
-    }
-    pthread_mutex_unlock(&system_lock);
-}
+        /* ════════════════════════════════════════════════════════════════
+         *  3. ALCOHOL DETECTION (check every 5 loops; requires warm-up)
+         * ════════════════════════════════════════════════════════════════ */
+        if ((loop_count % 5U) == 0U) {
+            if (mq3_is_warmed_up()) {
+                MQ3_Status_t alc = mq3_get_status();
 
-static void *communication_task(void *unused) {
-    (void)unused;
-    uint8_t raw[PROTO_MAX_FRAME_SIZE];
-    uint16_t used = 0U;
-    protocol_init();
-    hal_uart_init(0U, UART_BAUD_115200, UART_PARITY_NONE, UART_STOP_1);
-    while (system_running) {
-        uint8_t byte;
-        wdg_pet(TASK_COMM);
-        if (hal_uart_receive(0U, &byte, 1U, 10U) > 0) {
-            if (used == 0U && byte != PROTO_SYNC_BYTE_1) continue;
-            raw[used++] = byte;
-            if (used == 2U && raw[1] != PROTO_SYNC_BYTE_2) used = 0U;
-            if (used >= PROTO_HEADER_SIZE) {
-                uint16_t payload_length = ((uint16_t)raw[2] << 8) | raw[3];
-                if (payload_length > PROTO_MAX_PAYLOAD) used = 0U;
-                else if (used == PROTO_HEADER_SIZE + payload_length + PROTO_CRC_SIZE) {
-                    ProtocolFrame frame;
-                    if (protocol_decode_frame(raw, used, &frame) == 0) process_frame(0U, &frame);
-                    used = 0U;
+                if (alc == MQ3_DANGER) {
+                    alert_flags |= ALERT_FLAG_ALCOHOL;
+                    alert_lvl    = ALERT_CRITICAL;
+
+                    /* Cut engine and send SMS if not already sent */
+                    if ((g_system_ms - last_sms_ms) > 60000UL || last_sms_ms == 0) {
+                        last_sms_ms = g_system_ms;
+                        handle_emergency("ALCOHOL DET", gps_lat, gps_lon, 1);
+                    } else {
+                        engine_relay_cut();
+                    }
+                    lcd_show("ALCOHOL DANGER!", "Engine OFF");
+
+                } else if (alc == MQ3_WARN) {
+                    alert_flags |= ALERT_FLAG_ALCOHOL;
+                    if (alert_lvl < ALERT_WARNING) { alert_lvl = ALERT_WARNING; }
+                    lcd_show("Alcohol Warning", "Slow down!");
+
+                } else {
+                    /* Clean – restore engine if it was cut due to alcohol
+                     * (safety: only restore if below danger for >10 s;
+                     *  here simplified to immediate restore on CLEAN) */
+                    engine_relay_restore();
+                }
+            } else {
+                /* Still warming up */
+                lcd_show("MQ3 Warming Up..", "Please wait...");
+            }
+        }
+
+        /* ════════════════════════════════════════════════════════════════
+         *  4. LANE DEPARTURE WARNING (every loop)
+         * ════════════════════════════════════════════════════════════════ */
+        LaneStatus_t lane = ir_get_lane_status();
+
+        if (lane != LANE_OK && gps_speed > GPS_MIN_SPEED_KMH) {
+            /* Only warn if vehicle is moving */
+            alert_flags |= ALERT_FLAG_LANE;
+            if (alert_lvl < ALERT_WARNING) { alert_lvl = ALERT_WARNING; }
+
+            if (col_state == COL_STATE_CLEAR) {
+                /* Only update LCD if no collision alert displayed */
+                const char *dir_str = (lane == LANE_DEV_LEFT)  ? "LANE: Drift LEFT" :
+                                      (lane == LANE_DEV_RIGHT) ? "LANE: Drift RGHT" :
+                                                                  "LANE: Severe!   ";
+                lcd_show("Lane Departure!", dir_str);
+            }
+        }
+
+        /* ════════════════════════════════════════════════════════════════
+         *  5. CABIN TEMPERATURE / OVERHEAT (every 10 loops; DHT11 is slow)
+         * ════════════════════════════════════════════════════════════════ */
+        if ((loop_count % 10U) == 0U) {
+            if (dht11_read(&dht_data) == DHT11_OK) {
+
+                if (dht_data.temperature_c >= DHT11_TEMP_DANGER_C) {
+                    alert_flags |= ALERT_FLAG_OVERHEAT;
+                    alert_lvl    = ALERT_CRITICAL;
+                    lcd_show("FIRE / OVERHEAT!", "EVACUATE NOW!!");
+
+                    uart_puts("OVERHEAT: ");
+                    uart_putchar((char)('0' + dht_data.temperature_c / 10));
+                    uart_putchar((char)('0' + dht_data.temperature_c % 10));
+                    uart_puts("C\r\n");
+
+                } else if (dht_data.temperature_c >= DHT11_TEMP_WARN_C) {
+                    alert_flags |= ALERT_FLAG_OVERHEAT;
+                    if (alert_lvl < ALERT_WARNING) { alert_lvl = ALERT_WARNING; }
+
+                    if (col_state == COL_STATE_CLEAR) {
+                        lcd_show("Cabin Temp High!", "Check ventilat.");
+                    }
                 }
             }
         }
-        hal_delay_ms(50U);
-    }
-    return NULL;
-}
 
-static void *diagnostics_task(void *unused) {
-    (void)unused;
-    while (system_running) {
-        wdg_pet(TASK_DIAGNOSTICS);
-        pthread_mutex_lock(&system_lock);
-        for (Direction d = DIR_NORTH; d < NUM_DIRECTIONS; d++) {
-            for (uint32_t s = 0U; s < MAX_SENSORS_PER_LANE; s++) {
-                if (g_system.sensors[d][s].confidence < 30U) wdg_record_fault(FAULT_SENSOR_FAILURE, TASK_DIAGNOSTICS, g_system.sensors[d][s].id, "Sensor confidence low");
+        /* ════════════════════════════════════════════════════════════════
+         *  6. AUTO HEADLIGHTS (every 20 loops)
+         * ════════════════════════════════════════════════════════════════ */
+        if ((loop_count % 20U) == 0U) {
+            ldr_update_headlights();
+        }
+
+        /* ════════════════════════════════════════════════════════════════
+         *  7. GPS READ + DROWSINESS CHECK (every 10 loops)
+         * ════════════════════════════════════════════════════════════════ */
+        if ((loop_count % 10U) == 0U) {
+            if (gps_read(&gps_data) == GPS_OK) {
+                gps_lat   = gps_data.latitude;
+                gps_lon   = gps_data.longitude;
+                gps_speed = gps_data.speed_kmh;
+                gps_fix   = 1;
+
+                /* Drowsiness heuristic: speed stable (no course change) for >30s */
+                uint32_t now = g_system_ms;
+                if (gps_speed > DROWSY_MIN_DRIVE_SPEED_KMH) {
+                    float speed_delta = gps_speed - drowsy.last_speed_kmh;
+                    if (speed_delta < 0.0f) speed_delta = -speed_delta;
+
+                    if ((now - drowsy.last_check_ms) >= DROWSY_CHECK_INTERVAL_MS) {
+                        drowsy.last_check_ms = now;
+                        drowsy.last_speed_kmh = gps_speed;
+
+                        if (speed_delta < DROWSY_SPEED_STABLE_KMH) {
+                            drowsy.alert_count++;
+                            if (drowsy.alert_count >= 2U) {
+                                /* Two consecutive 30-second windows with stable speed */
+                                alert_flags |= ALERT_FLAG_DROWSY;
+                                if (alert_lvl < ALERT_WARNING) {
+                                    alert_lvl = ALERT_WARNING;
+                                }
+                                lcd_show("DROWSY ALERT!", "Take a break!   ");
+                                uart_puts("Drowsiness alert triggered\r\n");
+                            }
+                        } else {
+                            /* Speed changed – driver is active */
+                            drowsy.alert_count = 0;
+                        }
+                    }
+                } else {
+                    /* Vehicle stopped – reset drowsiness counter */
+                    drowsy.alert_count    = 0;
+                    drowsy.last_check_ms  = g_system_ms;
+                    drowsy.last_speed_kmh = gps_speed;
+                }
+            } else {
+                gps_fix = 0;
             }
         }
-        pthread_mutex_unlock(&system_lock);
-        hal_delay_ms(1000U);
-    }
-    return NULL;
-}
 
-static void *simulation_task(void *unused) {
-    (void)unused;
-    while (system_running) {
-        wdg_pet(TASK_SIMULATION);
-        pthread_mutex_lock(&system_lock);
-        if ((rand() % 100) < 25) {
-            Direction direction = (Direction)(rand() % NUM_DIRECTIONS);
-            VehicleType type = (rand() % 100 < 2) ? VEHICLE_EMERGENCY : VEHICLE_CAR;
-            if (enqueue_vehicle_locked(direction, type, type == VEHICLE_EMERGENCY ? EMERGENCY_PRIORITY : NORMAL_PRIORITY) && type == VEHICLE_EMERGENCY) activate_emergency_locked(direction);
+        /* ════════════════════════════════════════════════════════════════
+         *  8. NORMAL STATUS DISPLAY (when no alert is active)
+         * ════════════════════════════════════════════════════════════════ */
+        if (alert_flags == 0) {
+            display_normal_status(gps_speed, dht_data.temperature_c);
         }
-        if ((rand() % 100) < 10) g_system.lanes[rand() % NUM_DIRECTIONS].pedestrian_waiting++;
-        for (Direction d = DIR_NORTH; d < NUM_DIRECTIONS; d++) {
-            if (g_system.lanes[d].emergency_override && (rand() % 1000) < 5) clear_emergency_locked(d);
-        }
-        pthread_mutex_unlock(&system_lock);
-        hal_delay_ms(100U);
-    }
-    return NULL;
-}
 
-static void signal_handler(int signal_number) {
-    (void)signal_number;
-    system_running = 0;
-    g_running = false;
-}
+        /* ════════════════════════════════════════════════════════════════
+         *  9. GLOBAL ALERT OUTPUT (LEDs + Buzzer)
+         * ════════════════════════════════════════════════════════════════ */
+        alerts_update(alert_flags, alert_lvl);
 
-int main(void) {
-    pthread_t sensor, control, communication, diagnostics, simulation;
-    srand((unsigned int)time(NULL));
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-    memset(&g_system, 0, sizeof(g_system));
-    gettimeofday(&g_system.start_time, NULL);
-    g_system.current_mode = MODE_NORMAL;
-    g_system.previous_mode = MODE_NORMAL;
-    g_system.system_efficiency = 1.0f;
-    for (Direction d = DIR_NORTH; d < NUM_DIRECTIONS; d++) {
-        g_system.lanes[d].direction = d;
-        g_system.lanes[d].green_duration = MIN_GREEN_TIME;
-        for (uint32_t s = 0U; s < MAX_SENSORS_PER_LANE; s++) {
-            Sensor *sensor_data = &g_system.sensors[d][s];
-            sensor_data->id = (uint32_t)d * 100U + s;
-            sensor_data->direction = d;
-            sensor_data->type = (SensorType)s;
-            sensor_data->active = true;
-            sensor_data->confidence = 95U;
+        /* ════════════════════════════════════════════════════════════════
+         *  10. DEBUG SERIAL OUTPUT (every 20 loops)
+         * ════════════════════════════════════════════════════════════════ */
+        if ((loop_count % 20U) == 0U) {
+            uart_puts("LOOP|F:");
+            uart_putchar((char)('0' + (collision_data.dist_cm[US_FRONT] > 999 ?
+                                       0 : collision_data.dist_cm[US_FRONT] / 100)));
+            uart_puts("xx|MQ:");
+            uart_putchar((char)('0' + (uint8_t)mq3_get_status()));
+            uart_puts("|T:");
+            uart_putchar((char)('0' + dht_data.temperature_c / 10));
+            uart_putchar((char)('0' + dht_data.temperature_c % 10));
+            uart_puts("C|GPS:");
+            uart_putchar(gps_fix ? 'Y' : 'N');
+            uart_puts("\r\n");
         }
-    }
-    for (uint32_t pin = TRAFFIC_NORTH_RED; pin <= TRAFFIC_WEST_GREEN; pin++) hal_gpio_init(pin, GPIO_MODE_OUTPUT, GPIO_SPEED_HIGH);
-    wdg_init(WDG_TIMEOUT_MS);
-    wdg_register_task(TASK_SENSOR, "sensor", SENSOR_SAMPLE_RATE_MS, true);
-    wdg_register_task(TASK_CONTROL, "control", CONTROL_TICK_MS, true);
-    wdg_register_task(TASK_COMM, "comm", 50U, true);
-    wdg_register_task(TASK_DIAGNOSTICS, "diagnostics", 1000U, false);
-    wdg_register_task(TASK_SIMULATION, "simulation", 100U, false);
-    log_event("SYSTEM", "POSIX traffic simulation started; press Ctrl+C to stop");
-    pthread_create(&sensor, NULL, sensor_task, NULL);
-    pthread_create(&control, NULL, control_task, NULL);
-    pthread_create(&communication, NULL, communication_task, NULL);
-    pthread_create(&diagnostics, NULL, diagnostics_task, NULL);
-    pthread_create(&simulation, NULL, simulation_task, NULL);
-    pthread_join(sensor, NULL);
-    pthread_join(control, NULL);
-    pthread_join(communication, NULL);
-    pthread_join(diagnostics, NULL);
-    pthread_join(simulation, NULL);
-    pthread_mutex_lock(&system_lock);
-    set_all_red_locked();
-    pthread_mutex_unlock(&system_lock);
-    log_event("SYSTEM", "Simulation stopped safely");
+
+        /* ════════════════════════════════════════════════════════════════
+         *  Small inter-loop delay to avoid hammering I2C/sensors
+         * ════════════════════════════════════════════════════════════════ */
+        _delay_ms(50);
+
+    }  /* while(1) */
+
+    /* Never reached */
     return 0;
 }
