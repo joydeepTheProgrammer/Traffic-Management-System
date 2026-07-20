@@ -28,8 +28,38 @@ The project contains two deployment targets:
  
 ## 📐 Circuit & Wiring Diagram
 
-<img width="1572" height="1001" alt="image" src="https://github.com/user-attachments/assets/3d2d2ee9-5098-4918-9bca-4240d29ab22e" />
+```mermaid
+flowchart TD
 
+IR1[IR Sensor 1]
+IR2[IR Sensor 2]
+
+MCU[STM32F407VG<br/>ARM Cortex-M4]
+
+IR1 --> MCU
+IR2 --> MCU
+
+MCU --> L1[Traffic Lights - Lane 1]
+MCU --> L2[Traffic Lights - Lane 2]
+MCU --> LCD[16x2 I2C LCD]
+
+L1 --> R1[Red LED + 220Ω]
+L1 --> Y1[Yellow LED + 220Ω]
+L1 --> G1[Green LED + 220Ω]
+
+L2 --> R2[Red LED + 220Ω]
+L2 --> Y2[Yellow LED + 220Ω]
+L2 --> G2[Green LED + 220Ω]
+
+PWR[3.3V Power Rail] --> MCU
+PWR --> IR1
+PWR --> IR2
+
+GND[Common GND] --- MCU
+GND --- LCD
+GND --- L1
+GND --- L2
+```
 ---
 
 ### 📌 GPIO Pin Map (`hal.h`)
