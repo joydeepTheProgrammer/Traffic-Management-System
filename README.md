@@ -28,10 +28,8 @@ The project contains two deployment targets:
 
 ## 📐 Circuit & Wiring Diagram
 
-                                               SMART TRAFFIC MANAGEMENT SYSTEM
+                    SMART TRAFFIC MANAGEMENT SYSTEM
                     ===============================
-
-
                     +-----------------------+
                     |      IR Sensor 1      |
                     |     Vehicle Detect    |
@@ -52,10 +50,8 @@ The project contains two deployment targets:
                     |      IR Sensor 2      |
                     |     Vehicle Detect    |
                     +-----------------------+
-
                                 |
-      ---------------------------------------------------------------------
-      |                         |                           |
+      |-----------------------------------------------------|   
       |                         |                           |
       |                         |                           |
       v                         v                           v
