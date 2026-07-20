@@ -25,7 +25,7 @@ The project contains two deployment targets:
 - **Night Mode**: Automatically enters blinking-yellow power-saving mode between 22:00 and 05:00.
 
 ---
-
+ 
 ## 📐 Circuit & Wiring Diagram
 
 <img width="1567" height="1004" alt="image" src="https://github.com/user-attachments/assets/c4a080c4-4556-4d65-82d4-cae0ccee3a74" />
