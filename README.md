@@ -29,41 +29,7 @@ The project contains two deployment targets:
 ## 📐 Circuit & Wiring Diagram
 
 
-### System Block Architecture
 
-```mermaid
-graph LR
-    subgraph ARM Cortex-M4 MCU
-        direction TB
-        PA[PORT A - Traffic Light Drivers]
-        PB[PORT B - Sensor Inputs]
-    end
-
-    subgraph Traffic Lights
-        direction TB
-        N_L[North: PA0=Red, PA1=Yel, PA2=Grn]
-        S_L[South: PA3=Red, PA4=Yel, PA5=Grn]
-        E_L[East:  PA6=Red, PA7=Yel, PA8=Grn]
-        W_L[West:  PA9=Red, PA10=Yel, PA11=Grn]
-    end
-
-    subgraph Intersection Sensors
-        direction TB
-        N_S[North: PB0=IR, PB4=US_Trig, PB5=US_Echo, PB8=Inductive]
-        S_S[South: PB1=IR, PB6=US_Trig, PB7=US_Echo, PB9=Inductive]
-        E_S[East:  PB2=IR, PB10=Inductive, V2X Data]
-        W_S[West:  PB3=IR, PB11=Inductive, V2X Data]
-    end
-
-    PA ==>|Relay/MOSFET Driver| N_L
-    PA ==>|Relay/MOSFET Driver| S_L
-    PA ==>|Relay/MOSFET Driver| E_L
-    PA ==>|Relay/MOSFET Driver| W_L
-
-    PB <==|ADC / Digital IN| N_S
-    PB <==|ADC / Digital IN| S_S
-    PB <==|ADC / Digital IN| E_S
-    PB <==|ADC / Digital IN| W_S
 ```
 
 ### 📌 GPIO Pin Map (`hal.h`)
