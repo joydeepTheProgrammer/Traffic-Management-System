@@ -29,8 +29,8 @@ The project contains two deployment targets:
 ## 📐 Circuit & Wiring Diagram
 
 ```text
-                 SMART TRAFFIC MANAGEMENT SYSTEM
-                 ===============================
+                  SMART TRAFFIC MANAGEMENT SYSTEM
+                  ===============================
 
 
                     +-----------------------+
