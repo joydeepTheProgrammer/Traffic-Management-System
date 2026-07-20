@@ -28,7 +28,85 @@ The project contains two deployment targets:
 
 ## 📐 Circuit & Wiring Diagram
 
-<img width="8192" height="3617" alt="Energy Calibration and Dose-2026-07-20-095257" src="https://github.com/user-attachments/assets/c333ed3e-314f-4c38-a188-ccb9091f04ee" />
+                                               SMART TRAFFIC MANAGEMENT SYSTEM
+                    ===============================
+
+
+                    +-----------------------+
+                    |      IR Sensor 1      |
+                    |     Vehicle Detect    |
+                    +-----------+-----------+
+                                |
+                                |
+                    +-----------v-----------+
+                    |                       |
+                    |     STM32F407VG       |
+                    |  ARM Cortex-M4 @168MHz|
+                    |   1 MB Flash, 192 KB  |
+                    |        SRAM           |
+                    |                       |
+                    +-----------+-----------+
+                                ^
+                                |
+                    +-----------+-----------+
+                    |      IR Sensor 2      |
+                    |     Vehicle Detect    |
+                    +-----------------------+
+
+                                |
+      ---------------------------------------------------------------------
+      |                         |                           |
+      |                         |                           |
+      |                         |                           |
+      v                         v                           v
+
++---------------------+   +---------------------+   +----------------------+
+|  Traffic Lights     |   |  Traffic Lights     |   |    16x2 I2C LCD      |
+|      Lane 1         |   |      Lane 2         |   |      Display         |
++----------+----------+   +----------+----------+   +----------+-----------+
+           |                         |                         |
+           |                         |                         |
+           |                         |                         |
+           v                         v                         |
+    Red LED (220Ω)           Red LED (220Ω)                   |
+ Yellow LED (220Ω)        Yellow LED (220Ω)                   |
+  Green LED (220Ω)         Green LED (220Ω)                   |
+           |                         |                         |
+           +-----------+-------------+-------------------------+
+                       |                                       |
+                       v                                       v
+
+                 +-------------+                      +-------------+
+                 |   3.3V Rail |                      |  Common GND |
+                 +-------------+                      +-------------+
+                       |
+                       |
+          +------------+------------+
+          |                         |
+     STM32F407VG              IR Sensors
+                               (3.3V Compatible)
+
+                 (LCD powered at 5V if required,
+           with I²C level shifter if using 5V pull-ups)
+
+Pin Connections
+------------------------
+| Function          | STM32F407VG Pin                |
+| ----------------- | ------------------------------ |
+| IR Sensor 1 OUT   | PA0 (EXTI0)                    |
+| IR Sensor 2 OUT   | PA1 (EXTI1)                    |
+| Lane 1 Red LED    | PD12                           |
+| Lane 1 Yellow LED | PD13                           |
+| Lane 1 Green LED  | PD14                           |
+| Lane 2 Red LED    | PD15                           |
+| Lane 2 Yellow LED | PE0                            |
+| Lane 2 Green LED  | PE1                            |
+| LCD SDA           | PB7 (I2C1_SDA)                 |
+| LCD SCL           | PB6 (I2C1_SCL)                 |
+| STM32 Power       | 3.3V                           |
+| LCD Power         | 5V (or 3.3V-compatible module) |
+| Ground            | Common GND                     |
+
 
 ---
 
