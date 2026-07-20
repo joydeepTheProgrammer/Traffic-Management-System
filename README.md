@@ -82,7 +82,7 @@ The project contains two deployment targets:
      STM32F407VG         IR Sensors (3.3V Compatible)
 ```
 
-Pin Assignment
+**Pin Assignment**
 | Function          | STM32F407VG Pin                |
 | ----------------- | ------------------------------ |
 | IR Sensor 1 OUT   | PA0 (EXTI0)                    |
