@@ -85,8 +85,7 @@ The project contains two deployment targets:
                                
                  (LCD powered at 5V if required,
            with I²C level shifter if using 5V pull-ups)
-
----
+           
 
 ### 📌 GPIO Pin Map (`hal.h`)
 
