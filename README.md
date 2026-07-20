@@ -26,7 +26,7 @@ The project contains two deployment targets:
 
 ---
  
-## 📐 Circuit & Wiring Diagram
+## 📐Block Diagram & 📌 GPIO Pin Map (`hal.h`)
 
 ```text
                   SMART TRAFFIC MANAGEMENT SYSTEM
@@ -100,9 +100,7 @@ The project contains two deployment targets:
 | LCD Power         | 5V (or 3.3V-compatible module) |
 | Ground            | Common GND                     |
 
----
-
-### 📌 GPIO Pin Map (`hal.h`)
+<br>
 
 | Direction | Light: RED | Light: YELLOW | Light: GREEN | IR Sensor | Ultrasonic | Inductive Loop |
 |-----------|------------|---------------|--------------|-----------|------------|----------------|
