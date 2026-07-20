@@ -28,13 +28,6 @@ The project contains two deployment targets:
 
 ## 📐 Circuit & Wiring Diagram
 
-The system interfaces with 12 traffic light signals (PORT A) and 12 hardware sensors (PORT B). 
-
-### Electrical Schematics (Driver Details)
-
-![Traffic Light Driver Details](hardware/circuit-drivers.svg)
-
-![Sensor Input Isolation](hardware/circuit-sensors.svg)
 
 ### System Block Architecture
 
