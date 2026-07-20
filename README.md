@@ -60,6 +60,8 @@ GND --- LCD
 GND --- L1
 GND --- L2
 ```
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/0b537df8-df12-46cd-9ce7-679d607755f0" />
+
 ---
 
 ### 📌 GPIO Pin Map (`hal.h`)
