@@ -92,7 +92,7 @@ The monolithic simulator tests the adaptive algorithm, queue logic, and multi-th
 gcc -o main main.c -lpthread -lm -Wall -Wextra -Werror
 
 # Run
-./traffic_system
+./main
 ```
 
 ### 2. Embedded Modular Firmware
