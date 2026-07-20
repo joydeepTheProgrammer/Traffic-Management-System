@@ -28,7 +28,63 @@ The project contains two deployment targets:
  
 ## 📐 Circuit & Wiring Diagram
 
+                    SMART TRAFFIC MANAGEMENT SYSTEM
+                    ===============================
 
+
+                    +-----------------------+
+                    |      IR Sensor 1      |
+                    |     Vehicle Detect    |
+                    +-----------+-----------+
+                                |
+                                |
+                    +-----------v-----------+
+                    |                       |
+                    |     STM32F407VG       |
+                    |  ARM Cortex-M4 @168MHz|
+                    |   1 MB Flash, 192 KB  |
+                    |        SRAM           |
+                    |                       |
+                    +-----------+-----------+
+                                ^
+                                |
+                    +-----------+-----------+
+                    |      IR Sensor 2      |
+                    |     Vehicle Detect    |
+                    +-----------------------+
+                                |
+      ---------------------------------------------------------------------
+      |                         |                           |
+      |                         |                           |
+      |                         |                           |
+      v                         v                           v
++---------------------+   +---------------------+   +----------------------+
+|  Traffic Lights     |   |  Traffic Lights     |   |    16x2 I2C LCD      |
+|      Lane 1         |   |      Lane 2         |   |      Display         |
++----------+----------+   +----------+----------+   +----------+-----------+
+           |                         |                         |
+           |                         |                         |
+           |                         |                         |
+           v                         v                         |
+    Red LED (220Ω)           Red LED (220Ω)                   |
+ Yellow LED (220Ω)        Yellow LED (220Ω)                   |
+  Green LED (220Ω)         Green LED (220Ω)                   |
+           |                         |                         |
+           +-----------+-------------+-------------------------+
+                       |                                       |
+                       v                                       v
+                 +-------------+                      +-------------+
+                 |   3.3V Rail |                      |  Common GND |
+                 +-------------+                      +-------------+
+                       |
+                       |
+          +------------+------------+
+          |                         |
+     STM32F407VG              IR Sensors
+                               (3.3V Compatible)
+                               
+                 (LCD powered at 5V if required,
+           with I²C level shifter if using 5V pull-ups)
 
 ---
 
