@@ -26,7 +26,7 @@ The project contains two deployment targets:
 
 ---
  
-## 📐Block Diagram & 📌 GPIO Pin Map (`hal.h`)
+## 📐Block Diagram & GPIO Pin Map (`hal.h`)
 
 ```text
                   SMART TRAFFIC MANAGEMENT SYSTEM
