@@ -30,6 +30,14 @@ The project contains two deployment targets:
 
 The system interfaces with 12 traffic light signals (PORT A) and 12 hardware sensors (PORT B). 
 
+### Electrical Schematics (Driver Details)
+
+![Traffic Light Driver Details](hardware/circuit-drivers.svg)
+
+![Sensor Input Isolation](hardware/circuit-sensors.svg)
+
+### System Block Architecture
+
 ```mermaid
 graph LR
     subgraph ARM Cortex-M4 MCU
@@ -151,10 +159,3 @@ gcc -o traffic_firmware hal_sim.c protocol.c scheduler.c watchdog.c utils.c -Wal
 ## 📄 License
 
 MIT License — Copyright © 2026 Joydeep Majumdar.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
