@@ -28,39 +28,59 @@ The project contains two deployment targets:
  
 ## 📐 Circuit & Wiring Diagram
 
-```mermaid
-flowchart TD
+```text
+                 SMART TRAFFIC MANAGEMENT SYSTEM
+                 ===============================
 
-IR1[IR Sensor 1]
-IR2[IR Sensor 2]
 
-MCU[STM32F407VG<br/>ARM Cortex-M4]
-
-IR1 --> MCU
-IR2 --> MCU
-
-MCU --> L1[Traffic Lights - Lane 1]
-MCU --> L2[Traffic Lights - Lane 2]
-MCU --> LCD[16x2 I2C LCD]
-
-L1 --> R1[Red LED + 220Ω]
-L1 --> Y1[Yellow LED + 220Ω]
-L1 --> G1[Green LED + 220Ω]
-
-L2 --> R2[Red LED + 220Ω]
-L2 --> Y2[Yellow LED + 220Ω]
-L2 --> G2[Green LED + 220Ω]
-
-PWR[3.3V Power Rail] --> MCU
-PWR --> IR1
-PWR --> IR2
-
-GND[Common GND] --- MCU
-GND --- LCD
-GND --- L1
-GND --- L2
+                    +-----------------------+
+                    |      IR Sensor 1      |
+                    |     Vehicle Detect    |
+                    +-----------+-----------+
+                                |
+                                |
+                    +-----------v-----------+
+                    |                       |
+                    |     STM32F407VG       |
+                    |  ARM Cortex-M4 @168MHz|
+                    |   1 MB Flash, 192 KB  |
+                    |        SRAM           |
+                    |                       |
+                    +-----------+-----------+
+                                ^
+                                |
+                    +-----------+-----------+
+                    |      IR Sensor 2      |
+                    |     Vehicle Detect    |
+                    +-----------------------+
+                                |
+      ---------------------------------------------------------------------
+      |                         |                           |
+      |                         |                           |
+      |                         |                           |
+      v                         v                           v
++---------------------+   +---------------------+   +----------------------+
+| Traffic Lights      |   | Traffic Lights      |   |    16x2 I2C LCD      |
+| Lane 1              |   | Lane 2              |   |      Display         |
++----------+----------+   +----------+----------+   +----------+-----------+
+           |                         |                         |
+           |                         |                         |
+           v                         v                         |
+    Red LED (220Ω)           Red LED (220Ω)                   |
+ Yellow LED (220Ω)        Yellow LED (220Ω)                   |
+  Green LED (220Ω)         Green LED (220Ω)                   |
+           |                         |                         |
+           +-----------+-------------+-------------------------+
+                       |                                       |
+                       v                                       v
+                 +-------------+                      +-------------+
+                 |  3.3V Rail  |                      | Common GND  |
+                 +-------------+                      +-------------+
+                       |
+          +------------+------------+
+          |                         |
+     STM32F407VG         IR Sensors (3.3V Compatible)
 ```
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/0b537df8-df12-46cd-9ce7-679d607755f0" />
 
 ---
 
