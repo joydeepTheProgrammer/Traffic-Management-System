@@ -28,9 +28,7 @@ The project contains two deployment targets:
  
 ## 📐Circuit Diagram
 
-
-<img width="1376" height="768" alt="traffic_schematic_pro_v4_1784718949801" src="https://github.com/user-attachments/assets/d7207280-ab78-43c7-87b5-12e3c5662cc7" />
-
+<img width="1376" height="768" alt="traffic_schematic_white_final_1784719282909" src="https://github.com/user-attachments/assets/3f7a6934-3665-4e52-b498-9d5e51dad6d2" />
 
 ---
 
