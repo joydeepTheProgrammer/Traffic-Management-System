@@ -28,60 +28,7 @@ The project contains two deployment targets:
  
 ## 📐Block Diagram & GPIO Pin Map (`hal.h`)
 
-```text
-                  SMART TRAFFIC MANAGEMENT SYSTEM
-                  ===============================
-
-
-                    +-----------------------+
-                    |      IR Sensor 1      |
-                    |     Vehicle Detect    |
-                    +-----------+-----------+
-                                |
-                                |
-                    +-----------v-----------+
-                    |                       |
-                    |     STM32F407VG       |
-                    |  ARM Cortex-M4 @168MHz|
-                    |   1 MB Flash, 192 KB  |
-                    |        SRAM           |
-                    |                       |
-                    +-----------+-----------+
-                                ^
-                                |
-                    +-----------+-----------+
-                    |      IR Sensor 2      |
-                    |     Vehicle Detect    |
-                    +-----------------------+
-                                |
-      ---------------------------------------------------------------------
-      |                         |                           |
-      |                         |                           |
-      |                         |                           |
-      v                         v                           v
-+---------------------+   +---------------------+   +----------------------+
-| Traffic Lights      |   | Traffic Lights      |   |    16x2 I2C LCD      |
-| Lane 1              |   | Lane 2              |   |      Display         |
-+----------+----------+   +----------+----------+   +----------+-----------+
-           |                         |                         |
-           |                         |                         |
-           v                         v                         |
-    Red LED (220Ω)           Red LED (220Ω)                   |
- Yellow LED (220Ω)        Yellow LED (220Ω)                   |
-  Green LED (220Ω)         Green LED (220Ω)                   |
-           |                         |                         |
-           +-----------+-------------+-------------------------+
-                       |                                       |
-                       v                                       v
-                 +-------------+                      +-------------+
-                 |  3.3V Rail  |                      | Common GND  |
-                 +-------------+                      +-------------+
-                       |
-          +------------+------------+
-          |                         |
-     STM32F407VG         IR Sensors (3.3V Compatible)
-```
-<br>
+<img width="1376" height="768" alt="traffic_schematic_corrected_v3_1784718658857" src="https://github.com/user-attachments/assets/4dc01c66-76ba-4751-ae26-25ff8f13c4ba" />
 
 **Pin Assignment:**
 | Function          | STM32F407VG Pin                |
