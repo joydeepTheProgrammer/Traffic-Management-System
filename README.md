@@ -26,43 +26,10 @@ The project contains two deployment targets:
 
 ---
  
-## 📐Block Diagram & GPIO Pin Map (`hal.h`)
+## 📐Circuit Diagram
 
 <img width="1376" height="768" alt="traffic_schematic_corrected_v3_1784718658857" src="https://github.com/user-attachments/assets/4dc01c66-76ba-4751-ae26-25ff8f13c4ba" />
 
-**Pin Assignment:**
-| Function          | STM32F407VG Pin                |
-| ----------------- | ------------------------------ |
-| IR Sensor 1 OUT   | PA0 (EXTI0)                    |
-| IR Sensor 2 OUT   | PA1 (EXTI1)                    |
-| Lane 1 Red LED    | PD12                           |
-| Lane 1 Yellow LED | PD13                           |
-| Lane 1 Green LED  | PD14                           |
-| Lane 2 Red LED    | PD15                           |
-| Lane 2 Yellow LED | PE0                            |
-| Lane 2 Green LED  | PE1                            |
-| LCD SDA           | PB7 (I2C1_SDA)                 |
-| LCD SCL           | PB6 (I2C1_SCL)                 |
-| STM32 Power       | 3.3V                           |
-| LCD Power         | 5V (or 3.3V-compatible module) |
-| Ground            | Common GND                     |
-
-<br>
-
-| Direction | Light: RED | Light: YELLOW | Light: GREEN | IR Sensor | Ultrasonic | Inductive Loop |
-|-----------|------------|---------------|--------------|-----------|------------|----------------|
-| **North** | PA0 | PA1 | PA2 | PB0 | Trig: PB4, Echo: PB5 | PB8 |
-| **South** | PA3 | PA4 | PA5 | PB1 | Trig: PB6, Echo: PB7 | PB9 |
-| **East**  | PA6 | PA7 | PA8 | PB2 | - | PB10 |
-| **West**  | PA9 | PA10| PA11| PB3 | - | PB11 |
-
->Note:
-The STM32F407VG GPIO pins cannot directly drive traffic signal lamps.
-Each GPIO output should be connected to a driver stage (such as a ULN2003A
-Darlington transistor array, MOSFET driver, or an opto-isolated relay module,
-depending on the lamp voltage and current requirements). The driver stage
-provides the necessary current and voltage to safely switch the traffic lights
-while protecting the microcontroller.
 ---
 
 ## ⚙️ Traffic Logic Reference
